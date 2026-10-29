@@ -1,0 +1,2 @@
+# A ledger opened in the eval repo (path C) is machine-local working state.
+.ledger/

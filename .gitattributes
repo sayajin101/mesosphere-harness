@@ -1,0 +1,11 @@
+# LF everywhere, on every machine. Windows checkouts get LF too, not CRLF.
+# Git auto-detects binary files and leaves them alone.
+* text=auto eol=lf
+
+# The one exception: Windows script files are CRLF on disk, on every machine,
+# because Windows PowerShell expects it.
+# Git still stores them LF inside the repository; eol=crlf is what a checkout
+# writes, so no editor or OS setting gets a say.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf

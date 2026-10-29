@@ -1,0 +1,9 @@
+.DS_Store
+.obsidian/workspace*
+.obsidian/plugins/*/data.json
+.trash/
+.ledger/
+.claude/settings.local.json
+__pycache__/
+machine.local.json
+.reminder-state

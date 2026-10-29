@@ -1,0 +1,7 @@
+.DS_Store
+__pycache__/
+.ledger/
+.claude/settings.local.json
+machine.local.json
+.reminder-state
+.obsidian/

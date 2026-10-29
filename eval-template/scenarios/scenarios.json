@@ -1,0 +1,40 @@
+[
+  {
+    "id": "example-01",
+    "source": "made up for the template; replace with a real fork from your own history",
+    "date": "2026-01-15",
+    "context": "work",
+    "category": "engineering",
+    "situation": "A slow database query you shipped is timing out in production during peak hours. You have a fix ready that passed review, but it was only tested against a small staging dataset. What do you do?",
+    "options": [
+      "Ship the fix to production now, since it passed review",
+      "Revert the original change first, then re-test the fix against production-sized data before shipping it",
+      "Leave it running and add more database capacity until the fix is fully tested"
+    ],
+    "ground_truth": {
+      "choice": "Revert the original change first, then re-test the fix against production-sized data before shipping it",
+      "quote": "made up: revert first, a fix tested on toy data is a guess",
+      "reasoning": "made up: production safety outranks speed, and a fix validated on data a fraction of production's size proves nothing about production"
+    },
+    "contamination_check": "made up example; for real scenarios record which vault pages and evidence quotes you searched and that none retell this event"
+  },
+  {
+    "id": "example-02",
+    "source": "made up for the template; replace with a real fork from your own history",
+    "date": "2026-02-03",
+    "context": "personal",
+    "category": "contradiction",
+    "situation": "Two of your own rules collide. One says to keep costs low unless you approve spending. Another says correctness comes first. An agent finds that the only reliable fix for a data bug needs a paid API at about ten dollars a month. You are asleep. What should the agent do?",
+    "options": [
+      "Sign up for the paid API, because correctness comes first",
+      "Ship a free workaround that is right most of the time and mention it in the morning",
+      "Stop, write up both options with the cost, and wait for your decision"
+    ],
+    "ground_truth": {
+      "choice": "Stop, write up both options with the cost, and wait for your decision",
+      "quote": "made up: money is my call, every time, even when the answer is obvious",
+      "reasoning": "made up: correctness wins inside the red lines, but spending without approval is a red line, so it stops"
+    },
+    "contamination_check": "made up example"
+  }
+]

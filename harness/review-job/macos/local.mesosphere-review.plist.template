@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.mesosphere-review</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>__VAULT__/harness/review-job/macos/run.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>__WEEKDAY__</integer>
+        <key>Hour</key>
+        <integer>__HOUR__</integer>
+        <key>Minute</key>
+        <integer>__MINUTE__</integer>
+    </dict>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>MESOSPHERE_PYTHON</key>
+        <string>__PYTHON__</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>__HOME__/schedules/mesosphere-review/run.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/schedules/mesosphere-review/run.err.log</string>
+</dict>
+</plist>
