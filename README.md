@@ -25,6 +25,7 @@ Why the name: the mesosphere is the middle layer of Earth's atmosphere, where mo
 - [What it does not stop](#what-it-does-not-stop)
 - [Troubleshooting](#troubleshooting)
 - [Getting help](#getting-help)
+- [Contributing](#contributing)
 - [Updating and removing](#updating-and-removing)
 - [What is in the repo](#what-is-in-the-repo)
 - [Security](#security)
@@ -242,6 +243,14 @@ What the harness guarantees is that a drifting agent is stopped and a cheating o
 ## Getting help
 
 Open an issue on this repository. Say which path you took, your OS and agent, the command you ran and what it printed. Never paste credentials, vault pages or chat history into an issue: a made up value of the same shape is enough. Security problems go to the [Security](#security) route instead.
+
+## Contributing
+
+Ideas, bug reports and improvements are welcome.
+
+- **Ideas and problems:** open an issue. Say what you were trying to do, what you ran and what happened.
+- **Changes:** open a pull request. Keep it to one change, add a test that fails without it, and make sure `python3 harness/tests/run_all.py` still ends `ALL <n> PASSED`.
+- **Your contribution's license:** by opening a pull request, you agree it can be shipped under this repository's license, and under any license the project uses later.
 
 ## Updating and removing
 
