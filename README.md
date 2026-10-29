@@ -1,3 +1,5 @@
+![Mesosphere: hallucinations burn up before they hit main.](.github/banner.jpg)
+
 # Mesosphere
 
 **Hallucinations burn up before they hit main.**
