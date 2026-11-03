@@ -16,6 +16,7 @@ PROTECTED = ("SOUL.md", "IDENTITY.md")
 
 fail = []
 warn = []
+passed = []  # a check that ran and passed: reported, never counted as a warning
 
 
 def notes():
@@ -186,14 +187,20 @@ def check_diff(ref):
             fail.append(f"{f}: tier 1 modified. Only the owner edits SOUL.md and IDENTITY.md (contract 3.3)")
         if f.startswith("raw/"):
             fail.append(f"{f}: raw/ is immutable evidence and was modified (contract 3.3)")
-    # A new page legitimately introduces a status: line. Only flag a status that CHANGED,
-    # which means the same file's diff carries both a removed and an added status line.
+    # A new page legitimately introduces a status: line, but never `signed`: an agent's
+    # new page that arrives signed skipped the owner as surely as a flipped one (issue 7).
+    # For an existing page, only flag a status that CHANGED, which means the same file's
+    # diff carries both a removed and an added status line.
     added = set(subprocess.run(["git", "diff", "--name-only", "--diff-filter=A", ref],
                                capture_output=True, text=True).stdout.split())
     for f in changed:
-        if f in added or not f.endswith(".md"):
+        if not f.endswith(".md"):
             continue
         d = subprocess.run(["git", "diff", ref, "--", f], capture_output=True, text=True).stdout
+        if f in added:
+            if re.search(r"^\+status:\s*signed\b", d, re.M):
+                fail.append(f"{f}: new page arrives with status: signed. Only the owner sets signed (SCHEMA.md, contract 3.2)")
+            continue
         old = re.findall(r"^-status:\s*(\S+)", d, re.M)
         new = re.findall(r"^\+status:\s*(\S+)", d, re.M)
         if old and new and old != new:
@@ -270,7 +277,7 @@ def check_wrappers(d, full):
             why = last[-1] if last else "no output"
             fail.append(f"{script}: exit {r.returncode}: {why}")
         else:
-            warn.append(f"{script}: passed")
+            passed.append(f"{script}: passed")
 
 
 OUTCOMES = "episodic/lesson-outcomes.md"
@@ -375,6 +382,8 @@ def main():
         check_wrappers(a.wrappers_dir, a.wrappers_full)
 
     n = len(list(notes()))
+    for p in passed:
+        print(f"ok    {p}")
     for w in warn:
         print(f"warn  {w}")
     for f in fail:

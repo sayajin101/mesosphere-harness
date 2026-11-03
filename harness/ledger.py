@@ -748,6 +748,12 @@ def lint(gate):
         bad.append(f"EXPECT '{gate.expect.strip()}' is a bare success word, which a failing run also "
                    "prints (\"1 failed, 4 passed\"); an EXPECT replaces the exit code, so anchor it "
                    "to the line only a full pass prints, or drop EXPECT and judge on exit code")
+    # A literal EXPECT is a substring, so a number at either end matches inside a larger
+    # one: "0 failures" is found in "10 failures" (issue 5).
+    if gate.expect and not gate.expect.strip().startswith("/") and re.search(r"^\d|\d$", gate.expect.strip()):
+        bad.append(f"EXPECT '{gate.expect.strip()}' is a literal substring with a number at its edge, so it "
+                   f"also matches a larger number (\"0 failures\" is inside \"10 failures\"); anchor it "
+                   f"as a regex such as /^0 failures/ or /\\b0 failures\\b/")
     # With no EXPECT a check is judged on exit code, and `|| true` makes that 0 for ever:
     # a HOLD gate refused for a red baseline, given the suffix, guarded nothing (round 13).
     if not gate.expect and re.search(r"(?:\|\||;)\s*(?:true|:|exit\s+0)\s*$", gate.check):
@@ -782,7 +788,14 @@ def lint_mangled(gate):
                        f"such as \\1 collapsed on the way in; write the gate with a plain editor")
     if gate.expect and gate.expect.strip().startswith("/"):
         rx = re.fullmatch(r"/(.+)/([a-z]*)", gate.expect.strip())
-        if not rx:
+        # A literal path reads as a regex: /tmp/out became the regex "tmp" with the
+        # unknown flags "out", and /tmp/out.txt was refused as a split regex (issue 5).
+        # Path like means path characters only, so a regex split after "/^0" keeps its own refusal.
+        if re.fullmatch(r"/[\w.~-]+(?:/[\w.~-]*)*", gate.expect.strip()) and (not rx or set(rx.group(2)) - {"i"}):
+            bad.append(f"EXPECT '{gate.expect.strip()}' starts with /, so it is read as a /regex/, not as "
+                       f"a literal path; write a path as an escaped regex such as /\\/tmp\\/out\\.txt/, "
+                       f"or match a part of it that does not start with /")
+        elif not rx:
             bad.append("EXPECT opens a regex with / but never closes it, so it would be matched as "
                        "literal text; a newline may have split it across lines")
         else:

@@ -164,7 +164,7 @@ SCRUB = [
      lambda m: m.group(1) + "[REDACTED]"),
     (re.compile(r"(?i)\b(key|token|secret)\b([^\n]{0,20}?)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"),
      lambda m: m.group(1) + m.group(2) + "[REDACTED]"),
-    (re.compile(r"(?i)\b(set\s+(?:the\s+|my\s+)?(?:[A-Z0-9_]+\s+)?[A-Z0-9_]*(?:PASS|PASSWORD|PASSWD|PWD|SECRET|TOKEN|API_?KEY)[A-Z0-9_]*\s+to\s+)\S+"),
+    (re.compile(r"(?i)\b(set\s+(?:the\s+|my\s+)?(?:[A-Z0-9_]+\s+){0,3}[A-Z0-9_]*(?:PASS|PASSWORD|PASSWD|PWD|SECRET|TOKEN|API_?KEY)[A-Z0-9_]*\s+to\s+)\S+"),
      lambda m: m.group(1) + "[REDACTED]"),
     (re.compile(r"(?i)\b((?:login|user(?:name)?|creds?|credentials)\s*:?\s+\S+\s*/\s*)(?=\S*[A-Za-z])(?=\S*[0-9!@#$%^&*])\S{4,}"),
      lambda m: m.group(1) + "[REDACTED]"),
@@ -174,6 +174,12 @@ SCRUB = [
     re.compile(r"(?i)\bhere(?:'s|\s+is)\s+(?:the|my|your|our)\s+(?:secret|token|password|passphrase|"
                r"api[ _-]?key|key)\s*:?\s+(?=\S*[0-9!@#$%^&*])\S+"),
     (re.compile(r"(?i)\b((?:user(?:name)?|login)\s+\S+\s+(?:pass|pw|pwd)\s+)(?=\S*[0-9!@#$%^&*])\S+"),
+     lambda m: m.group(1) + "[REDACTED]"),
+    # Issue 2: "root pass is changeme123", "wifi psk is ...", "my otp is 492817" (a
+    # value with a digit or symbol, so "the pass is green" stays), and a bare
+    # admin:secret123 with no host after it.
+    re.compile(r"(?i)\b(?:pass|psk|otp|passcode)\s+(?:is|was|=|:)\s*(?=\S*[0-9!@#$%^&*])\S{4,}"),
+    (re.compile(r"(?i)\b((?:admin|root|user|username|login|sa|postgres|ubuntu|ec2-user):)(?=[^\s@]*\d)[^\s@:/]{4,}(?![@\w])"),
      lambda m: m.group(1) + "[REDACTED]"),
     # Long hex in either case, and long base64 runs (AWS secret keys are 40).
     re.compile(r"(?i)\b[0-9a-f]{32,}\b"),
@@ -269,7 +275,51 @@ def owner_text(entry):
     # Keep only what came before it, and drop any harness block left inside (round 19).
     content = re.split(r"<pasted_content\b", content, maxsplit=1)[0]
     content = re.sub(r"<system-reminder>[\s\S]*?</system-reminder>", "", content)
+    # "[Image #2]" stands for an attachment, not words (issue 1).
+    content = re.sub(r"\[Image #\d+\]\s*", "", content)
     return content.strip() or None
+
+
+# A line of pasted output rather than prose: a timestamp, a log level, a stack frame,
+# a shell prompt, a diff line, or a line that is mostly symbols and digits.
+LOG_LINE = re.compile(r"""^\s*(?:
+    \d{4}-\d\d-\d\d[T\ ]\d\d:\d\d | \[?\d\d:\d\d:\d\d |
+    \[?(?:TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|CRITICAL)\b\]?[:\ ] |
+    at\ [\w$.<>/]+\s*\(.*\)\s*$ | File\ ".*",\ line\ \d+ | Traceback\ \(most\ recent |
+    [\w.]+(?:Error|Exception):\ | [$#>]\ \S | [-+]{3}\ \S | @@\ |
+    \d+\ (?:passed|failed|errors?)\b | [{}\[\]],?\s*$
+    )""", re.X)
+
+
+def looks_like_log(line):
+    s = line.strip()
+    if not s:
+        return False
+    if LOG_LINE.match(line):
+        return True
+    letters = sum(c.isalpha() for c in s)
+    return len(s) >= 30 and letters / len(s) < 0.5
+
+
+def strip_pasted_logs(text):
+    """Drop runs of three or more lines of pasted output: terminal logs and stack traces
+    that Claude Code does not tag as a paste were mined as the owner's words, half of
+    one real extract by size (issue 1). A single odd line stays; blank lines inside a
+    run do not break it."""
+    lines = text.split("\n")
+    keep, run = [], []
+    def flush():
+        if sum(1 for l in run if l.strip()) < 3:
+            keep.extend(run)
+        run.clear()
+    for line in lines:
+        if looks_like_log(line) or (run and not line.strip()):
+            run.append(line)
+        else:
+            flush()
+            keep.append(line)
+    flush()
+    return "\n".join(keep).strip()
 
 
 def claude_code(path, since):
@@ -346,6 +396,9 @@ def main():
             if gen is None:
                 raise RuntimeError(f"unknown source type {kind!r}")
             name = src.get("name", kind)
+            # On unless mining.json says "drop_pasted_logs": false.
+            if cfg.get("drop_pasted_logs", True):
+                gen = ((ts, strip_pasted_logs(text), sid) for ts, text, sid in gen)
             rows += [(ts, name, sid, text) for ts, text, sid in gen if len(text) >= MIN_CHARS]
         rows.sort(key=lambda r: r[0])
         # One transcript can sit under two project folders: the same message, twice

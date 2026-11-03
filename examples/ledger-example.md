@@ -1,4 +1,6 @@
 # Ledger: invoice pdf download
+<!-- Illustration only: the lock value below is made up, so running `ledger.py status`
+     on this file reports LOCK BROKEN. A real ledger gets its lock from `declare`. -->
 Lock: sha256:4f1c9a0b7e2d3c5a
 Audit: subagent: COVERED: A1 to A3 covered, nothing in the prompt is uncovered
 Session: example

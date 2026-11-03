@@ -9,7 +9,10 @@ context as the first turn interactively and prepends it to the prompt headless.
 Register it in ~/.gemini/settings.json (timeouts are in milliseconds there):
 
   "hooks": {"SessionStart": [{"hooks": [{"type": "command", "timeout": 15000,
-      "name": "vault-load", "command": "python3 /ABS/PATH/TO/VAULT/harness/adapters/gemini/hooks/session-start.py"}]}]}
+      "name": "vault-load", "command": "python3 \"/ABS/PATH/TO/VAULT/harness/adapters/gemini/hooks/session-start.py\""}]}]}
+
+Keep the script path in escaped double quotes, as shown: a space in an unquoted path
+breaks the command.
 
 Never blocks a session: Gemini treats SessionStart as advisory.
 """

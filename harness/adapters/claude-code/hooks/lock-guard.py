@@ -141,8 +141,9 @@ if tool == "Bash":
                         r"(?:\"[^\"]*[/\\]|\S*[/\\])?(python[\d.]*|py|node|deno|ruby|perl|php|"
                         r"pwsh|powershell|osascript|bash|sh|zsh|dash|ksh|fish)(?:\.exe)?\"?(?![\w.-])(.*)$", re.I)
     redirect = re.compile(r"(?<![0-9&])>>?(?!&)\s*(\S+)")
-    names_rx = re.compile("|".join([r"\.ledger\b"] + [
-        re.escape(d.name) + r"([/\\]|\b)|" + re.escape(str(d)) for d in ledger_dirs]), re.I)
+    # The name ends where a path segment ends: `.ledger-proof` is another folder (issue 6).
+    names_rx = re.compile("|".join([r"\.ledger(?![\w.-])"] + [
+        re.escape(d.name) + r"(?![\w.-])|" + re.escape(str(d)) for d in ledger_dirs]), re.I)
 
     def names(text):
         """Whether text names a ledger folder, however it is spelled: quotes spliced
@@ -266,8 +267,18 @@ if tool == "Bash":
             # A real call to the engine is allowed whatever its free text says: "owner ran
             # the install" in an evidence line is not an install (round 16 review).
             engine = bool(it) and engine_call(it.group(2))
+            # Free text in quotes, a commit message or a grep pattern, is data: a writer word
+            # inside it runs nothing (issue 6). A one word quoted token is kept, since "tee"
+            # still runs tee, and inline code handed to a shell or find stays a writer.
+            bare = re.sub(r"\"[^\"]*\s[^\"]*\"|'[^']*\s[^']*'", " ", text)
+            # git rm --cached touches only the index, never the folder on disk.
+            writes = (writers.search(bare) or re.search(
+                r"\b(?:sh|bash|zsh|dash|ksh|python[\d.]*|perl|ruby|node)(?:\.exe)?\s+-c\b|\s-delete\b", bare)) \
+                and not re.match(r"\s*(?:\S+=\S*\s+)*(?:\S*/)?git\s+(?:-C\s+\S+\s+)?rm\b[^|;&]*\s--cached\b", text)
+            # An --exclude names what a tar or rsync leaves alone, not what it writes.
+            named = names(re.sub(r"--exclude(?:-dir)?(?:=|\s+)\S+", " ", text))
             if any(names(x) or within for x in targets) \
-                    or (not engine and (writers.search(text) or it) and (names(text) or within)):
+                    or (not engine and (writes or it) and (named or within)):
                 deny(f"That command looks like it writes into a directory holding a "
                      f"declared ledger. {ADVICE}")
 
