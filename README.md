@@ -43,7 +43,7 @@ Then the gate list is frozen and **locked** with a hash, so any later edit to it
 
 **The persona vault** (`vault-template/`). Plain markdown that captures how you think, decide and write: values, judgement rules, taste, voice, people, and past decisions with their reasons. It is loaded into every agent session, on whatever agent you use, so the agent works the way you would. You sign the core pages; agents may only draft. A linter (`harness/verify.py`) checks the vault's structure and sources and, given a git ref, refuses changes only you may make (to `SOUL.md`, `IDENTITY.md` or a page's signed status); a weekly job turns what happened that week into a short review for you to approve.
 
-**The eval** (`eval-template/`). An exam built from your real past decisions, kept in its own private repo and never shown to the vault. `blind.py` strips the answers before a model sees the questions; `score.py` totals a separate judge's verdicts and refuses a run that skipped a question. You adopt a new model by passing your own exam, not a public benchmark.
+**The eval** (`eval-template/`). An exam built from your real past decisions, kept in its own private repo and never shown to the vault. `blind.py` strips the answers before a model sees the questions; `score.py` totals a separate judge's verdicts and, given `--scenarios` with the exam's question list, refuses a run that skipped a question. You adopt a new model by passing your own exam, not a public benchmark.
 
 What the ledger catches, in two examples you can reproduce with `harness/LEDGER.md` open beside you:
 
@@ -72,7 +72,7 @@ You do not have to choose up front: the bootstrap asks you.
 **git and Python are needed before the quick start**, because you use them to clone and test. If you do not have them:
 
 - **macOS:** `xcode-select --install` gives both (its Python 3.9 is enough).
-- **Windows:** `winget install --id Python.Python.3.13 -e` and `winget install --id Git.Git -e`, then open a new terminal. Without winget, install from python.org and git-scm.com, and tick "Add python.exe to PATH" in the Python installer.
+- **Windows:** `winget install --id Python.Python.3.13 -e` and `winget install --id Git.Git -e`, then open a new terminal. Without winget, install from python.org and git-scm.com, and tick "Add python.exe to PATH" in the Python installer. Either way the real interpreter lands under `%LOCALAPPDATA%\Programs\Python\` (for example `Python313\python.exe`) for a per user install, and the Python launcher `py` comes with it: `py -0p` lists every installed Python with its full path, which is the path the hooks need.
 - **Linux:** `sudo apt install python3 git` (Debian, Ubuntu), `sudo dnf install python3 git` (Fedora) or `sudo pacman -S python git` (Arch).
 
 Everything else can wait: the bootstrap checks your machine first, records the exact path of every tool it finds, and shows you how to install anything else that is missing, asking before it runs anything.
@@ -135,6 +135,8 @@ What lands where: the raw history and its scrubbed copy stay in the working fold
 
 It takes more than one sitting, because it waits on you to answer questions and sign pages. Your place is kept: the setup ledger stays open in the vault listing every phase still unmet, and a long mining run saves a checkpoint and gives you a prompt to resume it in a fresh session.
 
+After setup, your vault's `OPERATING.md` (from `vault-template/OPERATING.md`) is the one page to keep: what to do daily (nothing), weekly (read the digest), whenever you have a minute (sign pages), and before any model swap (sit the exam).
+
 ## Path C: eval only
 
 For someone who already has a persona vault, in this shape or any other. The agent creates the eval repo from `eval-template/` as a separate private repo, removes the example scenarios, and harvests real decisions from your history by following the eval's `RUNBOOK.md`. Then it runs the first exam: your current model answers blind, a separate judge scores the answers against what you actually decided, and that score is the bar.
@@ -186,6 +188,8 @@ From then on the file is only changed through `ledger.py`:
 
 Google stopped accepting personal sign-ins for Gemini CLI in 2026; API key and paid Code Assist users may still be able to use it; personal users should use Antigravity.
 
+Cursor registers its session start hook in `~/.cursor/hooks.json`, with the script's absolute path in escaped double quotes as `harness/adapters/cursor/hooks/session-start.py` shows. Cursor does not wait for that hook, so prove in a fresh session that the vault actually arrived (phase 4 does this). Its ledger is advisory: nothing blocks a turn, so the agent pastes `ledger.py status` into every report, and the weekly job runs from another engine.
+
 "Advisory" means the ledger still judges correctly, but nothing forces the agent to ask it; the rule in its instructions file is what makes it ask. Each engine's `harness/adapters/<engine>/CAPABILITIES.md` lists honestly what it can and cannot do, and what has been proven so far.
 
 **Any other engine** (Grok Build, OpenCode, Cline, Aider, Goose and whatever comes next): BOOTSTRAP's "Other engines" section has the recipe. The agent builds the adapter on your machine from the engine's own `--help` and documentation, starting from `harness/adapters/_template/`, and calls it supported only after a fresh session proves it.
@@ -194,7 +198,7 @@ Google stopped accepting personal sign-ins for Gemini CLI in 2026; API key and p
 
 - **macOS.** Everything is tested here. The weekly job runs from launchd, and its self tests use the built in zsh.
 - **Windows.** Native Windows is supported. The ledger's checks run in Git Bash, which comes with Git for Windows. The weekly job runs from Task Scheduler, and its self tests use the built in Windows PowerShell 5.1. Watch for the Microsoft Store's `python` stub: the bootstrap finds the real interpreter and records its path.
-- **Linux.** The ledger, hooks, vault and eval are plain Python and git with nothing platform specific, but no Linux setup has been proven end to end yet. There is no weekly job wrapper: use cron or a systemd timer for the same steps (pull the vault, run `harness/history.py` if mining is set up, run the review prompt headless, commit the digest).
+- **Linux.** The ledger, hooks, vault and eval are plain Python and git with nothing platform specific, but no Linux setup has been proven end to end yet. Use `python3`, and give hooks the absolute path that `command -v python3` prints, the same way as on macOS. There is no weekly job wrapper: schedule the same steps with `crontab -e` or a systemd user timer (pull the vault, run `harness/history.py` if mining is set up, run the review prompt headless with your engine's own flags, commit and push the digest), and copy the macOS wrapper `harness/review-job/macos/run.sh` as a starting point.
 - **WSL.** Treated as Linux. Hooks then run inside WSL, not Windows.
 
 ## Privacy and your data
@@ -204,7 +208,7 @@ Google stopped accepting personal sign-ins for Gemini CLI in 2026; API key and p
 - **Only your own data, only with your yes.** The bootstrap mines only your own chat history and files, and only after you agree in the chat. Re-mining new chats on a schedule is a separate choice, offered in phase 7, which you can turn down or stop at any time.
 - **Your AI provider reads it.** Mining means your agent reads your history, so whatever you mine is sent to the model provider your agent uses, under that provider's terms. Mine only what you are content for them to process. The same goes for the vault itself: it is loaded into every session, so each agent you wire it into sends it to that agent's provider.
 - **Scrubbed before mining.** History is copied into a working folder you choose (the bootstrap suggests `~/persona-mining`), outside every repo, and scrubbed of credential shapes (keys, tokens, passwords, private keys, card numbers, phone numbers) before any mining agent reads a line. The scrubber is a pattern list, not a guarantee, which is why that folder stays outside every repo. Once setup is done you can delete the extracts in it; if monthly mining is on, keep the folder itself, since its `state.json` is where mining remembers what it has read.
-- **Only what you typed.** The agent writes a small extractor for each tool's history that keeps only your own messages, and shows it to you before running it. For the monthly re-mining of Claude Code history, `harness/history.py` also leaves out session summaries, pasted content, harness notices and prompts written by agents.
+- **Only what you typed.** The agent writes a small extractor for each tool's history that keeps only your own messages, and shows it to you before running it. For the monthly re-mining of Claude Code history, `harness/history.py` also leaves out session summaries, pasted content, image placeholders, runs of three or more pasted log lines (set `"drop_pasted_logs": false` in `mining.json` to keep those), harness notices and prompts written by agents.
 - **No telemetry.** The ledger, linter, scrubber and eval scripts make no network calls. The network is used by your agent itself, by git, by `gh` when setup checks repo visibility, and by the weekly job when it pulls and runs your agent.
 - **The agent never signs for you** and never sends a message to anyone on your behalf during setup.
 

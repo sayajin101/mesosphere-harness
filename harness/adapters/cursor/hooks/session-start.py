@@ -10,7 +10,10 @@ Register it in ~/.cursor/hooks.json (user level; paths are relative to ~/.cursor
 unless absolute):
 
   {"version": 1, "hooks": {"sessionStart": [{"command":
-      "python3 /ABS/PATH/TO/VAULT/harness/adapters/cursor/hooks/session-start.py"}]}}
+      "python3 \"/ABS/PATH/TO/VAULT/harness/adapters/cursor/hooks/session-start.py\""}]}}
+
+Keep the script path in escaped double quotes, as shown: a space in an unquoted path
+breaks the command.
 """
 import json, os, pathlib, sys
 

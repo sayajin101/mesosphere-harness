@@ -90,6 +90,35 @@ def find_ledger_dir(start):
     return start / name
 
 
+def unquote_data(text):
+    """Blank each quoted string the shell passes as plain text, pairing quotes left to right
+    as the shell does. A regex paired them wrongly: in `"$x 'y" $(touch .ledger/z) "z' w"`
+    it took `'y" $(...) "z'` as one quoted string and hid the substitution (review nit N1).
+    A backslash escapes the next character, a double quoted string holding $ or a backtick
+    stays because the shell expands it, and an unclosed quote blanks nothing."""
+    out, i = [], 0
+    while i < len(text):
+        c = text[i]
+        if c == "\\":
+            out.append(text[i:i + 2])
+            i += 2
+            continue
+        if c not in "'\"":
+            out.append(c)
+            i += 1
+            continue
+        j = i + 1
+        while j < len(text) and text[j] != c:
+            j += 2 if c == '"' and text[j] == "\\" else 1
+        if j >= len(text):
+            return text
+        quoted = text[i:j + 1]
+        plain = re.search(r"\s", quoted) and not (c == '"' and re.search(r"[$`]", quoted))
+        out.append(" " if plain else quoted)
+        i = j + 1
+    return "".join(out)
+
+
 # Guarded: the walk from the working folder and the project's own ledger folder, the
 # same pair the stop gate enforces.
 ledger_dirs = []
@@ -141,8 +170,10 @@ if tool == "Bash":
                         r"(?:\"[^\"]*[/\\]|\S*[/\\])?(python[\d.]*|py|node|deno|ruby|perl|php|"
                         r"pwsh|powershell|osascript|bash|sh|zsh|dash|ksh|fish)(?:\.exe)?\"?(?![\w.-])(.*)$", re.I)
     redirect = re.compile(r"(?<![0-9&])>>?(?!&)\s*(\S+)")
-    names_rx = re.compile("|".join([r"\.ledger\b"] + [
-        re.escape(d.name) + r"([/\\]|\b)|" + re.escape(str(d)) for d in ledger_dirs]), re.I)
+    # The name ends where a path segment ends: `.ledger-proof` is another folder (issue 6).
+    # A trailing dot is kept as the name, since Windows strips it from a path.
+    names_rx = re.compile("|".join([r"\.ledger(?![\w-]|\.\w)"] + [
+        re.escape(d.name) + r"(?![\w-]|\.\w)|" + re.escape(str(d)) for d in ledger_dirs]), re.I)
 
     def names(text):
         """Whether text names a ledger folder, however it is spelled: quotes spliced
@@ -266,8 +297,25 @@ if tool == "Bash":
             # A real call to the engine is allowed whatever its free text says: "owner ran
             # the install" in an evidence line is not an install (round 16 review).
             engine = bool(it) and engine_call(it.group(2))
+            # Free text in quotes is data when the command only records or searches it: a
+            # commit message or a grep pattern (issue 6). Only for those commands, never one
+            # that runs a quoted argument (rg --pre, git grep -O), and never a double quoted
+            # string holding $ or a backtick, which the shell expands. Not echo or printf:
+            # their text goes on down a pipe, and `echo "rm -rf .ledger" | sh` runs it.
+            data = re.match(r"\s*(?:\S+=\S*\s+)*(?:\S*/)?(?:git\s+(?:-C\s+\S+\s+)?(?:commit|tag|log|grep|show)"
+                            r"|grep|egrep|fgrep|rg)\b", text) and not re.search(r"\s(?:--pre\b|-O|--open-files-in-pager)", text)
+            bare = unquote_data(text) if data else text
+            # git rm --cached touches only the index, never the folder on disk, unless a
+            # substitution in the same command runs something else.
+            writes = (writers.search(bare) or re.search(r"\s-delete\b", bare)) and not (
+                re.match(r"\s*(?:\S+=\S*\s+)*(?:\S*/)?git\s+(?:-C\s+\S+\s+)?rm\b[^|;&]*\s--cached\b", text)
+                and not re.search(r"\$\(|`", text))
+            # An --exclude names what a tar or rsync leaves alone, not what it writes, except
+            # where --delete-excluded turns it into what rsync deletes.
+            named = names(text if "--delete-excluded" in text
+                          else re.sub(r"--exclude(?:-dir)?(?:=|\s+)\S+", " ", text))
             if any(names(x) or within for x in targets) \
-                    or (not engine and (writers.search(text) or it) and (names(text) or within)):
+                    or (not engine and (writes or it) and (named or within)):
                 deny(f"That command looks like it writes into a directory holding a "
                      f"declared ledger. {ADVICE}")
 
