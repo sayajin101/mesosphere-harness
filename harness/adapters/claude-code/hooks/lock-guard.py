@@ -90,6 +90,35 @@ def find_ledger_dir(start):
     return start / name
 
 
+def unquote_data(text):
+    """Blank each quoted string the shell passes as plain text, pairing quotes left to right
+    as the shell does. A regex paired them wrongly: in `"$x 'y" $(touch .ledger/z) "z' w"`
+    it took `'y" $(...) "z'` as one quoted string and hid the substitution (review nit N1).
+    A backslash escapes the next character, a double quoted string holding $ or a backtick
+    stays because the shell expands it, and an unclosed quote blanks nothing."""
+    out, i = [], 0
+    while i < len(text):
+        c = text[i]
+        if c == "\\":
+            out.append(text[i:i + 2])
+            i += 2
+            continue
+        if c not in "'\"":
+            out.append(c)
+            i += 1
+            continue
+        j = i + 1
+        while j < len(text) and text[j] != c:
+            j += 2 if c == '"' and text[j] == "\\" else 1
+        if j >= len(text):
+            return text
+        quoted = text[i:j + 1]
+        plain = re.search(r"\s", quoted) and not (c == '"' and re.search(r"[$`]", quoted))
+        out.append(" " if plain else quoted)
+        i = j + 1
+    return "".join(out)
+
+
 # Guarded: the walk from the working folder and the project's own ledger folder, the
 # same pair the stop gate enforces.
 ledger_dirs = []
@@ -275,7 +304,7 @@ if tool == "Bash":
             # their text goes on down a pipe, and `echo "rm -rf .ledger" | sh` runs it.
             data = re.match(r"\s*(?:\S+=\S*\s+)*(?:\S*/)?(?:git\s+(?:-C\s+\S+\s+)?(?:commit|tag|log|grep|show)"
                             r"|grep|egrep|fgrep|rg)\b", text) and not re.search(r"\s(?:--pre\b|-O|--open-files-in-pager)", text)
-            bare = re.sub(r"\"[^\"$`]*\s[^\"$`]*\"|'[^']*\s[^']*'", " ", text) if data else text
+            bare = unquote_data(text) if data else text
             # git rm --cached touches only the index, never the folder on disk, unless a
             # substitution in the same command runs something else.
             writes = (writers.search(bare) or re.search(r"\s-delete\b", bare)) and not (

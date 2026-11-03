@@ -195,7 +195,11 @@ with tempfile.TemporaryDirectory() as tmp:
               'eval "rm -rf .ledger"', 'timeout 9 bash -lc "rm -rf .ledger"', 'xargs perl -e "unlink q(.ledger/t.md)"',
               'git -c alias.z="!rm -rf .ledger" z', 'parallel "rm {}" ::: .ledger/t.md',
               'echo "rm -rf .ledger" | sh', 'printf "mv .ledger/t.md .ledger/closed/\\n" | bash -s',
-              'rg --pre "rm -rf .ledger" x .']),
+              'rg --pre "rm -rf .ledger" x .',
+              # Quotes a pattern pairs wrongly where the shell does not (review nit N1).
+              'git log --grep "$x \'y" $(touch .ledger/z) "z\' w"',
+              'git log --grep "a\'b" <(rm -rf .ledger) "c\'d"',
+              'git log --grep \\"a ; rm -rf .ledger ; echo b\\"']),
             ("#6c", ["tar czf out.tgz --exclude=.ledger ."],
              ["tar xf a.tgz -C .ledger", "rsync -a --delete --delete-excluded --exclude=.ledger empty/ ./"]),
             ("#6d", ["git rm -r --cached .ledger"],
