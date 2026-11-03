@@ -3,8 +3,8 @@
 
 Refuses to let a turn end while any open ledger in the folders it guards (the working
 folder's and the project's), not only this session's, has unmet gates, unmapped asks,
-or a broken lock. Costs zero tokens: it
-shells out to ledger.py, which only compares strings and exit codes.
+or a broken lock. Costs zero tokens: it shells out to ledger.py, which only compares
+strings and exit codes.
 
 Wire it (confirm the field names against the current hooks reference):
 

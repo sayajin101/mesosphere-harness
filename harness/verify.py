@@ -197,6 +197,13 @@ def check_diff(ref):
                                capture_output=True, text=True).stdout.split())
     added |= set(subprocess.run(["git", "ls-files", "--others", "--exclude-standard"],
                                 capture_output=True, text=True).stdout.splitlines())
+    # A page that was already signed may move: git's rename pairing names where from.
+    moved = {}
+    for line in subprocess.run(["git", "diff", "-M", "--name-status", "--diff-filter=R", ref],
+                               capture_output=True, text=True).stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 3:
+            moved[parts[2]] = parts[1]
     for f in sorted(set(changed) | added):
         if not f.endswith(".md"):
             continue
@@ -206,7 +213,10 @@ def check_diff(ref):
             except OSError:
                 continue
             front = page.split("\n---", 1)[0] if page.startswith("---") else ""
-            if re.search(r"^status:\s*signed\b", front, re.M):
+            was = subprocess.run(["git", "show", f"{ref}:{moved[f]}"], capture_output=True,
+                                 text=True).stdout if f in moved else ""
+            was_signed = re.search(r"^status:\s*signed\b", was.split("\n---", 1)[0], re.M)
+            if re.search(r"^status:\s*signed\b", front, re.M) and not was_signed:
                 fail.append(f"{f}: new page arrives with status: signed. Only the owner sets signed (SCHEMA.md, contract 3.2)")
             continue
         d = subprocess.run(["git", "diff", "--no-renames", ref, "--", f], capture_output=True, text=True).stdout

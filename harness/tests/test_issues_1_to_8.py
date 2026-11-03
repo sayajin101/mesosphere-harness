@@ -193,7 +193,9 @@ with tempfile.TemporaryDirectory() as tmp:
                      'grep -n "tar\\|rm --cached" .ledger/t.md'],
              ["rm '.ledger/my file'", 'echo "$(rm -rf .ledger) done"', 'git commit -m "$(rm -rf .ledger) msg"',
               'eval "rm -rf .ledger"', 'timeout 9 bash -lc "rm -rf .ledger"', 'xargs perl -e "unlink q(.ledger/t.md)"',
-              'git -c alias.z="!rm -rf .ledger" z', 'parallel "rm {}" ::: .ledger/t.md']),
+              'git -c alias.z="!rm -rf .ledger" z', 'parallel "rm {}" ::: .ledger/t.md',
+              'echo "rm -rf .ledger" | sh', 'printf "mv .ledger/t.md .ledger/closed/\\n" | bash -s',
+              'rg --pre "rm -rf .ledger" x .']),
             ("#6c", ["tar czf out.tgz --exclude=.ledger ."],
              ["tar xf a.tgz -C .ledger", "rsync -a --delete --delete-excluded --exclude=.ledger empty/ ./"]),
             ("#6d", ["git rm -r --cached .ledger"],
@@ -227,8 +229,12 @@ with tempfile.TemporaryDirectory() as tmp:
     git("init", "-q")
     (repo / "README.md").write_text("# vault\n")
     (repo / "heuristics" / "old.md").write_text("---\nstatus: mined-unverified\n---\n# an old draft\n\nits body\n")
+    (repo / "heuristics" / "kept.md").write_text("---\nstatus: signed\n---\n# signed by the owner\n\nits body\n")
     git("add", "-A")
     git("commit", "-qm", "base")
+    # An honest move of a page already signed is not a new signature.
+    (repo / "decisions").mkdir()
+    git("mv", "heuristics/kept.md", "decisions/kept.md")
     (repo / "heuristics" / "new.md").write_text("---\nstatus: signed\n---\n# a new page\n")
     (repo / "heuristics" / "draft.md").write_text("---\nstatus: mined-unverified\n---\n# a draft\n")
     git("add", "-A")
@@ -244,9 +250,10 @@ with tempfile.TemporaryDirectory() as tmp:
         verify.check_diff("HEAD")
     finally:
         os.chdir(here)
-    flagged = {n for n in ("new.md", "loose.md", "moved.md", "draft.md")
+    flagged = {n for n in ("new.md", "loose.md", "moved.md", "draft.md", "kept.md")
                if any(n in f and "signed" in f for f in verify.fail)}
-    check("#7b a new page arriving signed is refused, staged, untracked or renamed; a new draft is not",
+    check("#7b a new page arriving signed is refused, staged, untracked or renamed; a new draft and a "
+          "signed page moved as it was are not",
           flagged == {"new.md", "loose.md", "moved.md"}, verify.fail)
 verify.warn.clear()
 verify.fail.clear()

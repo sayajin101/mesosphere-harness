@@ -269,11 +269,12 @@ if tool == "Bash":
             # the install" in an evidence line is not an install (round 16 review).
             engine = bool(it) and engine_call(it.group(2))
             # Free text in quotes is data when the command only records or searches it: a
-            # commit message, a grep pattern, an echo (issue 6). Only for those commands, and
-            # never a double quoted string holding $ or a backtick, which the shell expands:
-            # `echo "$(rm -rf .ledger)"` still runs rm.
+            # commit message or a grep pattern (issue 6). Only for those commands, never one
+            # that runs a quoted argument (rg --pre, git grep -O), and never a double quoted
+            # string holding $ or a backtick, which the shell expands. Not echo or printf:
+            # their text goes on down a pipe, and `echo "rm -rf .ledger" | sh` runs it.
             data = re.match(r"\s*(?:\S+=\S*\s+)*(?:\S*/)?(?:git\s+(?:-C\s+\S+\s+)?(?:commit|tag|log|grep|show)"
-                            r"|grep|egrep|fgrep|rg|echo|printf)\b", text)
+                            r"|grep|egrep|fgrep|rg)\b", text) and not re.search(r"\s(?:--pre\b|-O|--open-files-in-pager)", text)
             bare = re.sub(r"\"[^\"$`]*\s[^\"$`]*\"|'[^']*\s[^']*'", " ", text) if data else text
             # git rm --cached touches only the index, never the folder on disk, unless a
             # substitution in the same command runs something else.
