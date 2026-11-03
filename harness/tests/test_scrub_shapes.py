@@ -36,6 +36,11 @@ LEAKS = {  # shape: (text, the secret that must vanish)
     "UK mobile": ("ring me on 07700 900123 later", "900123"),
     "short value": ("pin: 4821", "4821"),
     "short env value": ("DB_PASS=abc", "abc"),
+    "prose pass": ("root pass is changeme123", "changeme123"),
+    "prose psk": ("the wifi psk is SuperSecret99", "SuperSecret99"),
+    "prose otp": ("my otp is 492817", "492817"),
+    "set the env var": ("set the env var DB_PASSWORD to hunter2x", "hunter2x"),
+    "user:secret, no host": ("log in as admin:secret123 for now", "secret123"),
 }
 SURVIVES = [
     "the meeting is on 2026-10-28 at 10:11",
@@ -44,6 +49,8 @@ SURVIVES = [
     "a task-based, risk-free plan",
     "the key point is that it works",
     "the token is not in the archive",
+    "use the ubuntu:22.04 image and postgres:16.4",
+    "my bus pass is 45.00 a month",
 ]
 
 for shape, (text, secret) in LEAKS.items():

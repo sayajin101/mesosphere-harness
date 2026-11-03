@@ -54,10 +54,14 @@ def guard(root, cmd):
     return '"deny"' in r.stdout
 
 
-def lint(expect):
+def lint(expect, declaring=True):
+    """The refusals at declare, or with declaring=False the ones a declared gate meets again."""
     g = ledger.Gate(0, False, "G1", "PROVE", "x")
     g.check, g.expect = f"{sys.executable} t.py", expect
-    return " ".join(ledger.lint(g))
+    try:
+        return " ".join(ledger.lint(g, declaring=declaring))
+    except TypeError:                     # before the fix lint took no such argument
+        return " ".join(ledger.lint(g))
 
 
 def mine(tmp, text, extra=None):
@@ -97,6 +101,13 @@ check("#1b a pasted log is not mined, the owner's words around it are, and drop_
       "connection refused" not in got and "Traceback" not in got
       and "why does the deploy fail now?" in got and "without touching the tests" in got
       and "Traceback" in kept, (got, kept))
+PROSE = ["2026-11-01 10:00 call Sam about the price\n2026-11-02 09:30 send Sam the deck\n"
+         "2026-11-03 14:00 decide on pricing with Sam",
+         "Q1 2025: 1,234,567 (+12.5%) vs 1,100,000\nQ2 2025: 1,301,000 (+5.4%) vs 1,234,567\n"
+         "Q3 2025: 1,402,000 (+7.8%) vs 1,301,000",
+         "# keep the price\n# drop the add on\n# ship on Friday"]
+check("#1b a typed schedule, a column of figures and # notes are not taken for a log",
+      all(history.strip_pasted_logs(p) == p for p in PROSE) if hasattr(history, "strip_pasted_logs") else False)
 
 # 2: scrubber shapes, with ordinary sentences left alone.
 for label, s, secret in [("#2a", "root pass is changeme123", "changeme123"),
@@ -105,8 +116,10 @@ for label, s, secret in [("#2a", "root pass is changeme123", "changeme123"),
                          ("#2b", "set the env var DB_PASSWORD to hunter2x", "hunter2x"),
                          ("#2c", "log in as admin:secret123 for now", "secret123")]:
     check(f"{label} scrubbed: {s}", secret not in history.scrub(s), history.scrub(s))
-for label, s in [("#2a", "the pass is green and the otp app is open"), ("#2c", "see the admin:settings page"),
-                 ("#2c", "meet at 10:30 about the user:42 record")]:
+for label, s in [("#2a", "the pass is green and the otp app is open"), ("#2a", "my exam pass is 10/10"),
+                 ("#2a", "my bus pass is 45.00 a month"), ("#2c", "see the admin:settings page"),
+                 ("#2c", "meet at 10:30 about the user:42 record"), ("#2c", "use the ubuntu:22.04 image"),
+                 ("#2c", "pin postgres:16.4 and node:20-alpine"), ("#2c", "the admin:v2.0.1 release on sa:1433")]:
     check(f"{label} left alone: {s}", history.scrub(s) == s, history.scrub(s))
 
 # 3a: the Claude Code hooks are not for other engines as they are.
@@ -136,9 +149,13 @@ if boot is None:
     for label in ("#4a", "#4b", "#4c"):
         na(label, "BOOTSTRAP.md")
 else:
-    check("#4a phase 0 pushes with an upstream", "`git push -u origin main`" in boot)
-    check("#4b path C declares the example gate before the examples are deleted",
-          "declare the ledger there BEFORE you delete the two example scenarios" in boot)
+    check("#4a phase 0 pushes with an upstream, whatever the branch is called",
+          "`git push -u origin HEAD`" in boot and "push -u origin main" not in boot)
+    path_c = boot.split("## Path C", 1)[-1].split("\n## ", 1)[0]
+    declare_at = path_c.find("declare the ledger there BEFORE you delete")
+    delete_at = path_c.find("delete the two `example-` scenarios")
+    check("#4b path C says to declare the example gate before it says to delete the examples",
+          -1 < declare_at < delete_at, (declare_at, delete_at))
     check("#4c path A keeps its lines out of the shared .gitignore by default",
           "to the target repo's `.gitignore`" not in boot
           and "out of git with `.git/info/exclude`, the same way as step 3" in boot)
@@ -150,12 +167,15 @@ else:
           "__pycache__/" in gi and "`__pycache__/`" in boot)
 
 # 5a and 5b: EXPECT refusals that say what is wrong.
-check("#5a a literal path EXPECT is refused as a path, not as a split regex",
+check("#5a a literal path EXPECT is refused as a path, an unknown flag as a flag, not as a split regex",
       "literal path" in lint("/tmp/out") and "literal path" in lint("/tmp/out.txt")
+      and "flags 'm'" in lint("/ok/m") and "never closes" in lint("/^0")
       and lint("/^ok$/") == "" and lint("/abc/i") == "")
-check("#5b an unanchored number in a literal EXPECT is refused",
-      "larger number" in lint("0 failures") and lint("/^0 failures/") == ""
-      and lint("ALL 3 PASSED") == "")
+check("#5b a count at the edge of a literal EXPECT is refused, other numbers are not",
+      "larger number" in lint("0 failures") and "larger number" in lint("errors: 1")
+      and all(lint(e) == "" for e in ("/^0 failures/", "ALL 3 PASSED", "200 OK", "Python 3.12", "exit code 0", "node v20")))
+check("#5b the new refusals apply at declare only, so an earlier ledger's gates stay met",
+      lint("0 failures", declaring=False) == "" and "literal path" not in lint("/tmp/out", declaring=False))
 ex = read("examples/ledger-example.md")
 if ex is None:
     na("#5c", "examples/ledger-example.md")
@@ -166,13 +186,22 @@ else:
 with tempfile.TemporaryDirectory() as tmp:
     root = make_repo(pathlib.Path(tmp) / "g")
     declared(root, [("PROVE", "the release file exists", file_check("release.txt"))])
+    # Each hostile partner is a write the narrowing could have let through (review of this fix).
     for label, honest, hostile in [
-            ("#6a", "rm -rf .ledger-proof", "rm -rf .ledger"),
-            ("#6b", "git commit -m 'ignore .ledger and install the hooks'", "rm '.ledger/my file'"),
-            ("#6c", "tar czf out.tgz --exclude=.ledger .", "tar xf a.tgz -C .ledger"),
-            ("#6d", "git rm -r --cached .ledger", "git rm -r .ledger")]:
-        check(f"{label} allowed: {honest} (still refused: {hostile})",
-              not guard(root, honest) and guard(root, hostile))
+            ("#6a", ["rm -rf .ledger-proof"], ["rm -rf .ledger", "rm -rf .ledger."]),
+            ("#6b", ["git commit -m 'ignore .ledger and install the hooks'",
+                     'grep -n "tar\\|rm --cached" .ledger/t.md'],
+             ["rm '.ledger/my file'", 'echo "$(rm -rf .ledger) done"', 'git commit -m "$(rm -rf .ledger) msg"',
+              'eval "rm -rf .ledger"', 'timeout 9 bash -lc "rm -rf .ledger"', 'xargs perl -e "unlink q(.ledger/t.md)"',
+              'git -c alias.z="!rm -rf .ledger" z', 'parallel "rm {}" ::: .ledger/t.md']),
+            ("#6c", ["tar czf out.tgz --exclude=.ledger ."],
+             ["tar xf a.tgz -C .ledger", "rsync -a --delete --delete-excluded --exclude=.ledger empty/ ./"]),
+            ("#6d", ["git rm -r --cached .ledger"],
+             ["git rm -r .ledger", "git rm --cached x $(rm -rf .ledger)", "git rm --cached x `rm -rf .ledger`"])]:
+        let = [c for c in honest if guard(root, c)]
+        missed = [c for c in hostile if not guard(root, c)]
+        check(f"{label} allowed: {honest[0]} (and {len(hostile)} writes still refused)",
+              not let and not missed, {"refused": let, "let through": missed})
 
 # 7a: a passing selftest is reported as a pass, not a warning.
 with tempfile.TemporaryDirectory() as tmp:
@@ -197,11 +226,17 @@ with tempfile.TemporaryDirectory() as tmp:
                                     cwd=str(repo), capture_output=True, text=True)
     git("init", "-q")
     (repo / "README.md").write_text("# vault\n")
+    (repo / "heuristics" / "old.md").write_text("---\nstatus: mined-unverified\n---\n# an old draft\n\nits body\n")
     git("add", "-A")
     git("commit", "-qm", "base")
     (repo / "heuristics" / "new.md").write_text("---\nstatus: signed\n---\n# a new page\n")
     (repo / "heuristics" / "draft.md").write_text("---\nstatus: mined-unverified\n---\n# a draft\n")
     git("add", "-A")
+    # Untracked, as an agent's new page is mid task, and a rename that flips the status.
+    (repo / "heuristics" / "loose.md").write_text("---\nstatus: signed\n---\n# never added\n")
+    git("mv", "heuristics/old.md", "heuristics/moved.md")
+    (repo / "heuristics" / "moved.md").write_text("---\nstatus: signed\n---\n# an old draft\n\nits body\n")
+    git("add", "heuristics/moved.md")
     here = os.getcwd()
     os.chdir(repo)
     try:
@@ -209,9 +244,10 @@ with tempfile.TemporaryDirectory() as tmp:
         verify.check_diff("HEAD")
     finally:
         os.chdir(here)
-    check("#7b a new page arriving signed is refused, a new draft is not",
-          any("new.md" in f and "signed" in f for f in verify.fail)
-          and not any("draft.md" in f for f in verify.fail), verify.fail)
+    flagged = {n for n in ("new.md", "loose.md", "moved.md", "draft.md")
+               if any(n in f and "signed" in f for f in verify.fail)}
+    check("#7b a new page arriving signed is refused, staged, untracked or renamed; a new draft is not",
+          flagged == {"new.md", "loose.md", "moved.md"}, verify.fail)
 verify.warn.clear()
 verify.fail.clear()
 

@@ -142,8 +142,9 @@ if tool == "Bash":
                         r"pwsh|powershell|osascript|bash|sh|zsh|dash|ksh|fish)(?:\.exe)?\"?(?![\w.-])(.*)$", re.I)
     redirect = re.compile(r"(?<![0-9&])>>?(?!&)\s*(\S+)")
     # The name ends where a path segment ends: `.ledger-proof` is another folder (issue 6).
-    names_rx = re.compile("|".join([r"\.ledger(?![\w.-])"] + [
-        re.escape(d.name) + r"(?![\w.-])|" + re.escape(str(d)) for d in ledger_dirs]), re.I)
+    # A trailing dot is kept as the name, since Windows strips it from a path.
+    names_rx = re.compile("|".join([r"\.ledger(?![\w-]|\.\w)"] + [
+        re.escape(d.name) + r"(?![\w-]|\.\w)|" + re.escape(str(d)) for d in ledger_dirs]), re.I)
 
     def names(text):
         """Whether text names a ledger folder, however it is spelled: quotes spliced
@@ -267,16 +268,22 @@ if tool == "Bash":
             # A real call to the engine is allowed whatever its free text says: "owner ran
             # the install" in an evidence line is not an install (round 16 review).
             engine = bool(it) and engine_call(it.group(2))
-            # Free text in quotes, a commit message or a grep pattern, is data: a writer word
-            # inside it runs nothing (issue 6). A one word quoted token is kept, since "tee"
-            # still runs tee, and inline code handed to a shell or find stays a writer.
-            bare = re.sub(r"\"[^\"]*\s[^\"]*\"|'[^']*\s[^']*'", " ", text)
-            # git rm --cached touches only the index, never the folder on disk.
-            writes = (writers.search(bare) or re.search(
-                r"\b(?:sh|bash|zsh|dash|ksh|python[\d.]*|perl|ruby|node)(?:\.exe)?\s+-c\b|\s-delete\b", bare)) \
-                and not re.match(r"\s*(?:\S+=\S*\s+)*(?:\S*/)?git\s+(?:-C\s+\S+\s+)?rm\b[^|;&]*\s--cached\b", text)
-            # An --exclude names what a tar or rsync leaves alone, not what it writes.
-            named = names(re.sub(r"--exclude(?:-dir)?(?:=|\s+)\S+", " ", text))
+            # Free text in quotes is data when the command only records or searches it: a
+            # commit message, a grep pattern, an echo (issue 6). Only for those commands, and
+            # never a double quoted string holding $ or a backtick, which the shell expands:
+            # `echo "$(rm -rf .ledger)"` still runs rm.
+            data = re.match(r"\s*(?:\S+=\S*\s+)*(?:\S*/)?(?:git\s+(?:-C\s+\S+\s+)?(?:commit|tag|log|grep|show)"
+                            r"|grep|egrep|fgrep|rg|echo|printf)\b", text)
+            bare = re.sub(r"\"[^\"$`]*\s[^\"$`]*\"|'[^']*\s[^']*'", " ", text) if data else text
+            # git rm --cached touches only the index, never the folder on disk, unless a
+            # substitution in the same command runs something else.
+            writes = (writers.search(bare) or re.search(r"\s-delete\b", bare)) and not (
+                re.match(r"\s*(?:\S+=\S*\s+)*(?:\S*/)?git\s+(?:-C\s+\S+\s+)?rm\b[^|;&]*\s--cached\b", text)
+                and not re.search(r"\$\(|`", text))
+            # An --exclude names what a tar or rsync leaves alone, not what it writes, except
+            # where --delete-excluded turns it into what rsync deletes.
+            named = names(text if "--delete-excluded" in text
+                          else re.sub(r"--exclude(?:-dir)?(?:=|\s+)\S+", " ", text))
             if any(names(x) or within for x in targets) \
                     or (not engine and (writes or it) and (named or within)):
                 deny(f"That command looks like it writes into a directory holding a "

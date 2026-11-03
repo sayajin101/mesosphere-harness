@@ -721,8 +721,9 @@ def enumerate_asks(prompt):
     return asks
 
 
-def lint(gate):
-    """Static refusals, applied before anything is executed."""
+def lint(gate, declaring=False):
+    """Static refusals, applied before anything is executed. `declaring` adds the
+    refusals made after release (issue 5), which a gate declared earlier never met."""
     bad = []
     if gate.cls == "JUDGE":
         if gate.check:
@@ -748,11 +749,14 @@ def lint(gate):
         bad.append(f"EXPECT '{gate.expect.strip()}' is a bare success word, which a failing run also "
                    "prints (\"1 failed, 4 passed\"); an EXPECT replaces the exit code, so anchor it "
                    "to the line only a full pass prints, or drop EXPECT and judge on exit code")
-    # A literal EXPECT is a substring, so a number at either end matches inside a larger
-    # one: "0 failures" is found in "10 failures" (issue 5).
-    if gate.expect and not gate.expect.strip().startswith("/") and re.search(r"^\d|\d$", gate.expect.strip()):
-        bad.append(f"EXPECT '{gate.expect.strip()}' is a literal substring with a number at its edge, so it "
-                   f"also matches a larger number (\"0 failures\" is inside \"10 failures\"); anchor it "
+    # A literal EXPECT is a substring, so a count at either end matches inside a larger
+    # one: "0 failures" is found in "10 failures" (issue 5). Only a count beside a count
+    # word: "200 OK" and "Python 3.12" are fine as they are.
+    count = r"(?:fail|pass|error|warn|test|issue|problem|skip|leak|difference)\w*"
+    if declaring and gate.expect and not gate.expect.strip().startswith("/") and re.search(
+            rf"(?i)^\d+\s+{count}|{count}\W*\d+$", gate.expect.strip()):
+        bad.append(f"EXPECT '{gate.expect.strip()}' is a literal substring with a count at its edge, so a "
+                   f"larger number also matches it (\"0 failures\" is inside \"10 failures\"); anchor it "
                    f"as a regex such as /^0 failures/ or /\\b0 failures\\b/")
     # With no EXPECT a check is judged on exit code, and `|| true` makes that 0 for ever:
     # a HOLD gate refused for a red baseline, given the suffix, guarded nothing (round 13).
@@ -765,11 +769,11 @@ def lint(gate):
         # tests/hooks_test.py (round 8 and 10 reviews).
         if needle and re.search(r"(?<!\w)" + re.escape(needle.lower()) + r"(?!\w)", gate.check.lower()):
             bad.append(f"EXPECT '{needle}' appears inside its own CHECK, so the check is a tautology")
-    bad += lint_mangled(gate)
+    bad += lint_mangled(gate, declaring)
     return bad
 
 
-def lint_mangled(gate):
+def lint_mangled(gate, declaring=False):
     """Refuse a gate that an escaping layer has mangled on its way into the file.
 
     On 2026-10-27 five gates were written through a Python string that was not raw:
@@ -790,8 +794,12 @@ def lint_mangled(gate):
         rx = re.fullmatch(r"/(.+)/([a-z]*)", gate.expect.strip())
         # A literal path reads as a regex: /tmp/out became the regex "tmp" with the
         # unknown flags "out", and /tmp/out.txt was refused as a split regex (issue 5).
-        # Path like means path characters only, so a regex split after "/^0" keeps its own refusal.
-        if re.fullmatch(r"/[\w.~-]+(?:/[\w.~-]*)*", gate.expect.strip()) and (not rx or set(rx.group(2)) - {"i"}):
+        if declaring and rx and set(rx.group(2)) - {"i"}:
+            bad.append(f"EXPECT '{gate.expect.strip()}' is read as the /regex/ '{rx.group(1)}' with the flags "
+                       f"'{rx.group(2)}', and only the i flag exists; if it is a literal path, write it as an "
+                       f"escaped regex such as /\\/tmp\\/out/, otherwise drop the other flags")
+        # Path characters only, so a regex split after "/^0" keeps its own refusal below.
+        elif declaring and not rx and re.fullmatch(r"/[\w.~-]+(?:/[\w.~-]*)*", gate.expect.strip()):
             bad.append(f"EXPECT '{gate.expect.strip()}' starts with /, so it is read as a /regex/, not as "
                        f"a literal path; write a path as an escaped regex such as /\\/tmp\\/out\\.txt/, "
                        f"or match a part of it that does not start with /")
@@ -850,7 +858,7 @@ def cmd_declare(args):
 
     refused, declared = [], 0
     for g in led.gates:
-        problems = lint(g)
+        problems = lint(g, declaring=True)
         if problems:
             refused += [f"{g.id}: {p}" for p in problems]
             continue
@@ -983,7 +991,7 @@ def cmd_amend(args):
     for g in amended.gates:
         if g.id not in new_ids:
             continue
-        problems = lint(g)
+        problems = lint(g, declaring=True)
         if problems:
             refused += [f"{g.id}: {x}" for x in problems]
             continue

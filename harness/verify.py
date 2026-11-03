@@ -177,7 +177,7 @@ def check_dashes():
 
 def check_diff(ref):
     try:
-        changed = subprocess.run(["git", "diff", "--name-only", ref], capture_output=True,
+        changed = subprocess.run(["git", "diff", "--name-only", "--no-renames", ref], capture_output=True,
                                  text=True, check=True).stdout.split()
     except subprocess.CalledProcessError:
         fail.append(f"cannot diff against '{ref}'")
@@ -191,16 +191,25 @@ def check_diff(ref):
     # new page that arrives signed skipped the owner as surely as a flipped one (issue 7).
     # For an existing page, only flag a status that CHANGED, which means the same file's
     # diff carries both a removed and an added status line.
-    added = set(subprocess.run(["git", "diff", "--name-only", "--diff-filter=A", ref],
+    # A page renamed with its status flipped is an add here, and an agent's new page is
+    # usually still untracked mid task, which git diff never lists.
+    added = set(subprocess.run(["git", "diff", "--name-only", "--no-renames", "--diff-filter=A", ref],
                                capture_output=True, text=True).stdout.split())
-    for f in changed:
+    added |= set(subprocess.run(["git", "ls-files", "--others", "--exclude-standard"],
+                                capture_output=True, text=True).stdout.splitlines())
+    for f in sorted(set(changed) | added):
         if not f.endswith(".md"):
             continue
-        d = subprocess.run(["git", "diff", ref, "--", f], capture_output=True, text=True).stdout
         if f in added:
-            if re.search(r"^\+status:\s*signed\b", d, re.M):
+            try:
+                page = pathlib.Path(f).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            front = page.split("\n---", 1)[0] if page.startswith("---") else ""
+            if re.search(r"^status:\s*signed\b", front, re.M):
                 fail.append(f"{f}: new page arrives with status: signed. Only the owner sets signed (SCHEMA.md, contract 3.2)")
             continue
+        d = subprocess.run(["git", "diff", "--no-renames", ref, "--", f], capture_output=True, text=True).stdout
         old = re.findall(r"^-status:\s*(\S+)", d, re.M)
         new = re.findall(r"^\+status:\s*(\S+)", d, re.M)
         if old and new and old != new:

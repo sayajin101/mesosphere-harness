@@ -17,6 +17,7 @@ mining.json, at the vault root (machine paths may use ~):
    "max_chars": 400000,               # cap per run, about 100k tokens; the rest waits
    "workdir": "~/persona-mining",      # OUTSIDE every repo; extracts and state live here
    "start_from": "2026-10-27",        # first run reads from here (the initial mining date)
+   "drop_pasted_logs": true,          # default; false keeps pasted terminal output
    "sources": [
      {"type": "claude-code", "path": "~/.claude/projects"},
      {"type": "command", "name": "cursor", "command": ["python3", "~/persona-mining/extractors/cursor.py"]}
@@ -178,8 +179,12 @@ SCRUB = [
     # Issue 2: "root pass is changeme123", "wifi psk is ...", "my otp is 492817" (a
     # value with a digit or symbol, so "the pass is green" stays), and a bare
     # admin:secret123 with no host after it.
-    re.compile(r"(?i)\b(?:pass|psk|otp|passcode)\s+(?:is|was|=|:)\s*(?=\S*[0-9!@#$%^&*])\S{4,}"),
-    (re.compile(r"(?i)\b((?:admin|root|user|username|login|sa|postgres|ubuntu|ec2-user):)(?=[^\s@]*\d)[^\s@:/]{4,}(?![@\w])"),
+    # A bare "pass" needs a letter and a digit, so "pass: 10/10" and "my bus pass is
+    # 45.00" stay; a user:secret value skips versions and ports (ubuntu:22.04, sa:1433).
+    re.compile(r"(?i)\b(?:psk|otp|passcode)\s+(?:is|was|=|:)\s*(?=\S*[0-9!@#$%^&*])\S{4,}"),
+    re.compile(r"(?i)\bpass\s+(?:is|was|=|:)\s*(?=\S*[A-Za-z])(?=\S*[0-9!@#$%^&*])\S{4,}"),
+    (re.compile(r"(?i)\b((?:admin|root|user|username|login|sa|postgres|ubuntu|ec2-user):)(?=[^\s@]*\d)"
+                r"(?=[^\s@]*[A-Za-z])(?!v?\d+(?:\.\d+)*(?:[-.]\w+)?(?![^\s@:/]))[^\s@:/]{4,}(?![@\w])"),
      lambda m: m.group(1) + "[REDACTED]"),
     # Long hex in either case, and long base64 runs (AWS secret keys are 40).
     re.compile(r"(?i)\b[0-9a-f]{32,}\b"),
@@ -280,25 +285,21 @@ def owner_text(entry):
     return content.strip() or None
 
 
-# A line of pasted output rather than prose: a timestamp, a log level, a stack frame,
-# a shell prompt, a diff line, or a line that is mostly symbols and digits.
+# A line of pasted output rather than prose: a timestamp to the second, a log level, a
+# stack frame, a $ prompt, a diff line, or a lone bracket. Each needs a mark only output
+# carries, so a typed schedule ("2026-11-01 10:00 call Sam"), a column of figures or a
+# list of # notes stays.
 LOG_LINE = re.compile(r"""^\s*(?:
-    \d{4}-\d\d-\d\d[T\ ]\d\d:\d\d | \[?\d\d:\d\d:\d\d |
+    \d{4}-\d\d-\d\d[T\ ]\d\d:\d\d:\d\d | \[?\d\d:\d\d:\d\d |
     \[?(?:TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|CRITICAL)\b\]?[:\ ] |
     at\ [\w$.<>/]+\s*\(.*\)\s*$ | File\ ".*",\ line\ \d+ | Traceback\ \(most\ recent |
-    [\w.]+(?:Error|Exception):\ | [$#>]\ \S | [-+]{3}\ \S | @@\ |
+    [\w.]+(?:Error|Exception):\ | \$\ \S | [-+]{3}\ \S | @@\ |
     \d+\ (?:passed|failed|errors?)\b | [{}\[\]],?\s*$
     )""", re.X)
 
 
 def looks_like_log(line):
-    s = line.strip()
-    if not s:
-        return False
-    if LOG_LINE.match(line):
-        return True
-    letters = sum(c.isalpha() for c in s)
-    return len(s) >= 30 and letters / len(s) < 0.5
+    return bool(line.strip()) and bool(LOG_LINE.match(line))
 
 
 def strip_pasted_logs(text):

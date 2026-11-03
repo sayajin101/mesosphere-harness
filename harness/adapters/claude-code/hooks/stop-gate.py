@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Claude Code Stop hook for the task ledger.
 
-Refuses to let a turn end while any open ledger in the ledger folder, not only this
-session's, has unmet gates, unmapped asks, or a broken lock. Costs zero tokens: it
+Refuses to let a turn end while any open ledger in the folders it guards (the working
+folder's and the project's), not only this session's, has unmet gates, unmapped asks,
+or a broken lock. Costs zero tokens: it
 shells out to ledger.py, which only compares strings and exit codes.
 
 Wire it (confirm the field names against the current hooks reference):

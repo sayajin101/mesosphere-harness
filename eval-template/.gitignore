@@ -1,4 +1,4 @@
 # A ledger opened in the eval repo (path C) is machine-local working state.
 .ledger/
-# Python's bytecode cache, written beside harness/ when the ledger runs.
+# Python's bytecode cache, written inside harness/ when ledger.py imports history.py.
 __pycache__/
